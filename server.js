@@ -18,13 +18,13 @@ app.use(cors({
     methods: ['GET', 'POST', 'PUT', 'DELETE'],
 }));
 
-// Serve uploaded files statically
-app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
+// Serve uploaded files statically (optional, for backward compatibility)
+app.use('/uploads', express.static(path.join(__dirname, 'Uploads')));
 
-mongoose.connect(process.env.MONGODB_URI, { useNewUrlParser: true, useUnifiedTopology: true })
+mongoose.connect(process.env.MONGODB_URI)
     .then(() => console.log('MongoDB connected'))
     .catch((error) => console.error(`MongoDB connection error: ${error}`));
 
-app.use('/', signinRoute);
+app.use('/api', signinRoute); // Mount routes under /api
 
 app.listen(PORT, () => console.log(`Server is running on http://localhost:${PORT}`));

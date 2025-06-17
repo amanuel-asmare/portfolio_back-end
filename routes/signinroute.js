@@ -139,13 +139,57 @@ router.get('/api/files', async(req, res) => {
     }
 });
 
-// Serve uploaded files with error handling
-router.get('/uploads/:filename', (req, res) => {
-    const filePath = path.join(uploadDir, req.params.filename);
-    if (fs.existsSync(filePath)) {
-        res.sendFile(filePath);
-    } else {
-        res.status(404).send({ message: 'File not found' });
+// Serve uploaded files with proper headers
+router.get('/api/uploads/:filename', async(req, res) => {
+    try {
+        const filename = req.params.filename;
+        const file = await File.findOne({ filename }); // Verify file exists in database
+        if (!file) {
+            return res.status(404).send({ message: 'File not found in database' });
+        }
+
+        const filePath = path.join(uploadDir, filename);
+        if (!fs.existsSync(filePath)) {
+            return res.status(404).send({ message: 'File not found on server' });
+        }
+
+        // Set headers for file serving
+        res.setHeader('Content-Type', file.mimeType);
+        res.setHeader('Content-Disposition', `inline; filename="${encodeURIComponent(file.originalName)}"`);
+
+        // Stream the file
+        const fileStream = fs.createReadStream(filePath);
+        fileStream.pipe(res);
+    } catch (error) {
+        console.error('Serve file error:', error);
+        res.status(500).send({ message: `Failed to serve file: ${error.message}` });
+    }
+});
+
+// Download file with proper headers
+router.get('/api/download/:filename', async(req, res) => {
+    try {
+        const filename = req.params.filename;
+        const file = await File.findOne({ filename }); // Verify file exists in database
+        if (!file) {
+            return res.status(404).send({ message: 'File not found in database' });
+        }
+
+        const filePath = path.join(uploadDir, filename);
+        if (!fs.existsSync(filePath)) {
+            return res.status(404).send({ message: 'File not found on server' });
+        }
+
+        // Set headers for download
+        res.setHeader('Content-Type', file.mimeType);
+        res.setHeader('Content-Disposition', `attachment; filename="${encodeURIComponent(file.originalName)}"`);
+
+        // Stream the file
+        const fileStream = fs.createReadStream(filePath);
+        fileStream.pipe(res);
+    } catch (error) {
+        console.error('Download file error:', error);
+        res.status(500).send({ message: `Failed to download file: ${error.message}` });
     }
 });
 
