@@ -32,37 +32,6 @@ router.use(cors({
     preflightContinue: true,
 }));
 
-// Log and validate route registrations
-const originalPost = router.post.bind(router);
-router.post = (path, ...args) => {
-    console.log(`Registering POST route: ${path}`);
-    if (path.includes(':') && !path.match(/:[a-zA-Z0-9_]+/)) {
-        console.error(`Invalid POST route path: ${path}`);
-        throw new Error(`Invalid POST route path: ${path}`);
-    }
-    return originalPost(path, ...args);
-};
-
-const originalGet = router.get.bind(router);
-router.get = (path, ...args) => {
-    console.log(`Registering GET route: ${path}`);
-    if (path.includes(':') && !path.match(/:[a-zA-Z0-9_]+/)) {
-        console.error(`Invalid GET route path: ${path}`);
-        throw new Error(`Invalid GET route path: ${path}`);
-    }
-    return originalGet(path, ...args);
-};
-
-const originalDelete = router.delete.bind(router);
-router.delete = (path, ...args) => {
-    console.log(`Registering DELETE route: ${path}`);
-    if (path.includes(':') && !path.match(/:[a-zA-Z0-9_]+/)) {
-        console.error(`Invalid DELETE route path: ${path}`);
-        throw new Error(`Invalid DELETE route path: ${path}`);
-    }
-    return originalDelete(path, ...args);
-};
-
 // Configure Multer
 const storage = multer.diskStorage({
     destination: (req, file, cb) => {
@@ -159,7 +128,7 @@ router.post('/upload', (req, res, next) => {
             filename: req.file.filename,
             originalName: req.file.originalname,
             mimeType: req.file.mimetype,
-            path: req.file.filename,
+            path: req.file.path,
             size: req.file.size,
         });
         await file.save();
@@ -167,14 +136,14 @@ router.post('/upload', (req, res, next) => {
         res.status(201).send({ message: 'File uploaded successfully', file });
     } catch (error) {
         console.error('Upload error:', error.stack);
-        res.status(500).send({ message: `Failed to save file: ${error.message}` });
+        res.status(500).send({ message: `Failed to upload file: ${error.message}` });
     }
 });
 
 // Get all files route
 router.get('/files', async(req, res) => {
     try {
-        const files = await File.find().sort({ uploadDate: -1 });
+        const files = await File.find().sort({ uploadDate: '-1' });
         res.status(200).send(files);
     } catch (error) {
         console.error('Fetch files error:', error.stack);
