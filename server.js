@@ -31,6 +31,11 @@ app.use(cors({
 // Handle OPTIONS preflight requests explicitly
 app.options('*', cors());
 
+// Root route
+app.get('/', (req, res) => {
+    res.status(200).json({ message: 'Welcome to the Portfolio Backend API' });
+});
+
 // MongoDB connection
 mongoose.connect(process.env.MONGODB_URI)
     .then(() => console.log('MongoDB connected'))
