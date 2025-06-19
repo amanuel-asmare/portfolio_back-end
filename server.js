@@ -23,8 +23,8 @@ app.use(cors({
 app.use('/uploads', express.static(path.join(__dirname, 'Uploads')));
 
 mongoose.connect(process.env.MONGODB_URI)
-    .then(() => console.log('MongoDB connected'))
-    .catch((error) => console.error(`MongoDB connection error: ${error}`));
+    .then(() => console.log('Connected to MongoDB'))
+    .catch((err) => console.error('MongoDB connection error:', err));
 
 app.use('/api', signinRoute); // Mount routes under /api
 
