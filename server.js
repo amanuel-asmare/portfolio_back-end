@@ -18,13 +18,13 @@ app.use(cors({
     allowedHeaders: ['Content-Type', 'Authorization'],
     methods: ['GET', 'POST', 'PUT', 'DELETE'],
 }));
+mongoose.connect(process.env.MONGODB_URI)
+    .then(() => console.log('Connected to MongoDB'))
+    .catch((err) => console.error('MongoDB connection error:', err));
 
 // Serve uploaded files statically (optional, for backward compatibility)
 app.use('/uploads', express.static(path.join(__dirname, 'Uploads')));
 
-mongoose.connect(process.env.MONGODB_URI)
-    .then(() => console.log('Connected to MongoDB'))
-    .catch((err) => console.error('MongoDB connection error:', err));
 
 app.use('/api', signinRoute); // Mount routes under /api
 
