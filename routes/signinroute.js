@@ -22,11 +22,11 @@ router.use(cors({
     },
     credentials: true,
     allowedHeaders: ['Content-Type', 'Authorization'],
-    methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+    methods: ['GET', 'POST', 'PUT', 'DELETE'],
     preflightContinue: true,
 }));
 
-// Configure Multer for memory storage (temporary, before GridFS upload)
+// Configure Multer for memory storage
 const storage = multer.memoryStorage();
 const fileFilter = (req, file, cb) => {
     const allowedTypes = [
@@ -122,8 +122,7 @@ router.post('/upload', (req, res, next) => {
         });
 
         const gridfsBucket = req.app.locals.gridfsBucket;
-        const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
-        const filename = `${uniqueSuffix}${path.extname(req.file.originalname)}`;
+        const filename = req.file.originalname; // Use original name for consistency
 
         // Upload to GridFS
         const uploadStream = gridfsBucket.openUploadStream(filename, {
@@ -176,8 +175,10 @@ router.get('/uploads/:filename', async(req, res) => {
         if (!filename) {
             return res.status(400).send({ message: 'Filename is required' });
         }
+        console.log(`Serving file: ${filename}`);
         const file = await File.findOne({ filename });
         if (!file) {
+            console.log(`File not found in database: ${filename}`);
             return res.status(404).send({ message: 'File not found in database' });
         }
 
@@ -185,12 +186,13 @@ router.get('/uploads/:filename', async(req, res) => {
         const downloadStream = gridfsBucket.openDownloadStreamByName(filename);
 
         downloadStream.on('error', (error) => {
-            console.error('GridFS stream error:', error.stack);
-            res.status(404).send({ message: 'File not found in GridFS' });
+            console.error(`GridFS stream error for ${filename}:`, error.stack);
+            res.status(404).send({ message: `File not found in GridFS: ${filename}` });
         });
 
         res.setHeader('Content-Type', file.mimeType);
         res.setHeader('Content-Disposition', `inline; filename="${encodeURIComponent(file.originalName)}"`);
+        res.setHeader('Content-Length', file.size);
         downloadStream.pipe(res);
     } catch (error) {
         console.error('Serve file error:', error.stack);
@@ -205,8 +207,10 @@ router.get('/download/:filename', async(req, res) => {
         if (!filename) {
             return res.status(400).send({ message: 'Filename is required' });
         }
+        console.log(`Downloading file: ${filename}`);
         const file = await File.findOne({ filename });
         if (!file) {
+            console.log(`File not found in database: ${filename}`);
             return res.status(404).send({ message: 'File not found in database' });
         }
 
@@ -214,12 +218,13 @@ router.get('/download/:filename', async(req, res) => {
         const downloadStream = gridfsBucket.openDownloadStreamByName(filename);
 
         downloadStream.on('error', (error) => {
-            console.error('GridFS stream error:', error.stack);
-            res.status(404).send({ message: 'File not found in GridFS' });
+            console.error(`GridFS stream error for ${filename}:`, error.stack);
+            res.status(404).send({ message: `File not found in GridFS: ${filename}` });
         });
 
         res.setHeader('Content-Type', file.mimeType);
         res.setHeader('Content-Disposition', `attachment; filename="${encodeURIComponent(file.originalName)}"`);
+        res.setHeader('Content-Length', file.size);
         downloadStream.pipe(res);
     } catch (error) {
         console.error('Download file error:', error.stack);
