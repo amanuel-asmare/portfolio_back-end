@@ -3,17 +3,11 @@ const cors = require('cors');
 const bcrypt = require('bcrypt');
 const multer = require('multer');
 const path = require('path');
-const fs = require('fs');
+const { ObjectId } = require('mongodb');
 const SignUser = require('../models/signin');
 const File = require('../models/file');
 
 const router = express.Router();
-
-// Ensure uploads directory exists
-const uploadDir = path.join(__dirname, '../Uploads');
-if (!fs.existsSync(uploadDir)) {
-    fs.mkdirSync(uploadDir, { recursive: true });
-}
 
 // Configure CORS
 const allowedOrigins = process.env.ALLOWED_ORIGINS ? process.env.ALLOWED_ORIGINS.split(',') : ['http://localhost:5173', 'https://portfolio-ypox.onrender.com'];
@@ -32,17 +26,8 @@ router.use(cors({
     preflightContinue: true,
 }));
 
-// Configure Multer
-const storage = multer.diskStorage({
-    destination: (req, file, cb) => {
-        cb(null, uploadDir);
-    },
-    filename: (req, file, cb) => {
-        const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
-        cb(null, uniqueSuffix + path.extname(file.originalname));
-    },
-});
-
+// Configure Multer for memory storage (temporary, before GridFS upload)
+const storage = multer.memoryStorage();
 const fileFilter = (req, file, cb) => {
     const allowedTypes = [
         'image/jpeg', 'image/png', 'image/gif',
@@ -130,17 +115,43 @@ router.post('/upload', (req, res, next) => {
         if (!req.file) {
             return res.status(400).send({ message: 'No file uploaded' });
         }
-        console.log('File received:', req.file);
-        const file = new File({
-            filename: req.file.filename,
-            originalName: req.file.originalname,
-            mimeType: req.file.mimetype,
-            path: req.file.path,
+        console.log('File received:', {
+            originalname: req.file.originalname,
+            mimetype: req.file.mimetype,
             size: req.file.size,
         });
-        await file.save();
-        console.log('File saved to MongoDB:', file);
-        res.status(201).send({ message: 'File uploaded successfully', file });
+
+        const gridfsBucket = req.app.locals.gridfsBucket;
+        const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
+        const filename = `${uniqueSuffix}${path.extname(req.file.originalname)}`;
+
+        // Upload to GridFS
+        const uploadStream = gridfsBucket.openUploadStream(filename, {
+            metadata: {
+                originalName: req.file.originalname,
+                mimeType: req.file.mimetype,
+            },
+        });
+        uploadStream.write(req.file.buffer);
+        uploadStream.end();
+
+        uploadStream.on('finish', async() => {
+            const file = new File({
+                filename,
+                originalName: req.file.originalname,
+                mimeType: req.file.mimetype,
+                path: `gridfs:${filename}`,
+                size: req.file.size,
+            });
+            await file.save();
+            console.log('File saved to MongoDB:', file);
+            res.status(201).send({ message: 'File uploaded successfully', file });
+        });
+
+        uploadStream.on('error', (error) => {
+            console.error('GridFS upload error:', error.stack);
+            res.status(500).send({ message: `Failed to upload file: ${error.message}` });
+        });
     } catch (error) {
         console.error('Upload error:', error.stack);
         res.status(500).send({ message: `Failed to upload file: ${error.message}` });
@@ -170,20 +181,17 @@ router.get('/uploads/:filename', async(req, res) => {
             return res.status(404).send({ message: 'File not found in database' });
         }
 
-        const filePath = path.join(uploadDir, filename);
-        if (!fs.existsSync(filePath)) {
-            return res.status(404).send({ message: 'File not found on server' });
-        }
+        const gridfsBucket = req.app.locals.gridfsBucket;
+        const downloadStream = gridfsBucket.openDownloadStreamByName(filename);
+
+        downloadStream.on('error', (error) => {
+            console.error('GridFS stream error:', error.stack);
+            res.status(404).send({ message: 'File not found in GridFS' });
+        });
 
         res.setHeader('Content-Type', file.mimeType);
         res.setHeader('Content-Disposition', `inline; filename="${encodeURIComponent(file.originalName)}"`);
-
-        const fileStream = fs.createReadStream(filePath);
-        fileStream.on('error', (error) => {
-            console.error('Stream error:', error.stack);
-            res.status(500).send({ message: `Failed to serve file: ${error.message}` });
-        });
-        fileStream.pipe(res);
+        downloadStream.pipe(res);
     } catch (error) {
         console.error('Serve file error:', error.stack);
         res.status(500).send({ message: `Failed to serve file: ${error.message}` });
@@ -202,20 +210,17 @@ router.get('/download/:filename', async(req, res) => {
             return res.status(404).send({ message: 'File not found in database' });
         }
 
-        const filePath = path.join(uploadDir, filename);
-        if (!fs.existsSync(filePath)) {
-            return res.status(404).send({ message: 'File not found on server' });
-        }
+        const gridfsBucket = req.app.locals.gridfsBucket;
+        const downloadStream = gridfsBucket.openDownloadStreamByName(filename);
+
+        downloadStream.on('error', (error) => {
+            console.error('GridFS stream error:', error.stack);
+            res.status(404).send({ message: 'File not found in GridFS' });
+        });
 
         res.setHeader('Content-Type', file.mimeType);
         res.setHeader('Content-Disposition', `attachment; filename="${encodeURIComponent(file.originalName)}"`);
-
-        const fileStream = fs.createReadStream(filePath);
-        fileStream.on('error', (error) => {
-            console.error('Stream error:', error.stack);
-            res.status(500).send({ message: `Failed to download file: ${error.message}` });
-        });
-        fileStream.pipe(res);
+        downloadStream.pipe(res);
     } catch (error) {
         console.error('Download file error:', error.stack);
         res.status(500).send({ message: `Failed to download file: ${error.message}` });
@@ -233,12 +238,15 @@ router.delete('/files/:id', async(req, res) => {
         if (!file) {
             return res.status(404).send({ message: 'File not found' });
         }
-        const filePath = path.join(uploadDir, file.filename);
-        if (fs.existsSync(filePath)) {
-            fs.unlinkSync(filePath);
+
+        const gridfsBucket = req.app.locals.gridfsBucket;
+        const gridFile = await gridfsBucket.find({ filename: file.filename }).toArray();
+        if (gridFile.length > 0) {
+            await gridfsBucket.delete(new ObjectId(gridFile[0]._id));
         } else {
-            console.warn(`File not found on disk: ${filePath}`);
+            console.warn(`File not found in GridFS: ${file.filename}`);
         }
+
         await File.findByIdAndDelete(id);
         res.status(200).send({ message: 'File deleted successfully' });
     } catch (error) {

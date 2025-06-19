@@ -15,7 +15,7 @@ app.use(express.json());
 const allowedOrigins = process.env.ALLOWED_ORIGINS ? process.env.ALLOWED_ORIGINS.split(',') : ['http://localhost:5173', 'https://portfolio-ypox.onrender.com'];
 app.use(cors({
     origin: (origin, callback) => {
-        console.log(`Request Origin: ${origin}`); // Debug CORS origin
+        console.log(`Request Origin: ${origin}`);
         if (!origin || allowedOrigins.includes(origin)) {
             callback(null, true);
         } else {
@@ -38,14 +38,16 @@ app.get('/', (req, res) => {
 
 // MongoDB connection
 mongoose.connect(process.env.MONGODB_URI)
-    .then(() => console.log('MongoDB connected'))
+    .then(() => {
+        console.log('MongoDB connected');
+        // Initialize GridFS
+        const conn = mongoose.connection;
+        app.locals.gridfsBucket = new mongoose.mongo.GridFSBucket(conn.db, { bucketName: 'uploads' });
+    })
     .catch((error) => {
         console.error('MongoDB connection error:', error.stack);
         process.exit(1);
     });
-
-// Serve static files
-app.use('/Uploads', express.static(path.join(__dirname, 'Uploads')));
 
 // Routes
 app.use('/api', signinRoute);
