@@ -78,13 +78,20 @@ const handleMulterError = (err, req, res, next) => {
 router.post('/signin', async(req, res) => {
     try {
         const { name, email, password } = req.body;
+        if (!name || !email || !password) {
+            return res.status(400).send({ message: 'Name, email, and password are required' });
+        }
+        const existingUser = await SignUser.findOne({ email });
+        if (existingUser) {
+            return res.status(400).send({ message: 'Email already exists' });
+        }
         const hashedPassword = await bcrypt.hash(password, 10);
         const user = new SignUser({ name, email, password: hashedPassword });
         await user.save();
         res.status(201).send({ message: 'User created successfully', user: { name, email } });
     } catch (error) {
         console.error('Sign-in error:', error.stack);
-        res.status(400).send({ message: error.message });
+        res.status(500).send({ message: `Failed to create user: ${error.message}` });
     }
 });
 
@@ -106,7 +113,7 @@ router.post('/login', async(req, res) => {
         res.status(200).send({ message: 'Login successful', user: { name: user.name, email: user.email } });
     } catch (error) {
         console.error('Login error:', error.stack);
-        res.status(500).send({ message: 'Server error', error: error.message });
+        res.status(500).send({ message: `Server error: ${error.message}` });
     }
 });
 
@@ -143,7 +150,7 @@ router.post('/upload', (req, res, next) => {
 // Get all files route
 router.get('/files', async(req, res) => {
     try {
-        const files = await File.find().sort({ uploadDate: '-1' });
+        const files = await File.find().sort({ uploadDate: -1 });
         res.status(200).send(files);
     } catch (error) {
         console.error('Fetch files error:', error.stack);
@@ -155,6 +162,9 @@ router.get('/files', async(req, res) => {
 router.get('/uploads/:filename', async(req, res) => {
     try {
         const filename = req.params.filename;
+        if (!filename) {
+            return res.status(400).send({ message: 'Filename is required' });
+        }
         const file = await File.findOne({ filename });
         if (!file) {
             return res.status(404).send({ message: 'File not found in database' });
@@ -169,10 +179,14 @@ router.get('/uploads/:filename', async(req, res) => {
         res.setHeader('Content-Disposition', `inline; filename="${encodeURIComponent(file.originalName)}"`);
 
         const fileStream = fs.createReadStream(filePath);
+        fileStream.on('error', (error) => {
+            console.error('Stream error:', error.stack);
+            res.status(500).send({ message: `Failed to serve file: ${error.message}` });
+        });
         fileStream.pipe(res);
     } catch (error) {
         console.error('Serve file error:', error.stack);
-        res.status(500).send({ message: error.message });
+        res.status(500).send({ message: `Failed to serve file: ${error.message}` });
     }
 });
 
@@ -180,6 +194,9 @@ router.get('/uploads/:filename', async(req, res) => {
 router.get('/download/:filename', async(req, res) => {
     try {
         const filename = req.params.filename;
+        if (!filename) {
+            return res.status(400).send({ message: 'Filename is required' });
+        }
         const file = await File.findOne({ filename });
         if (!file) {
             return res.status(404).send({ message: 'File not found in database' });
@@ -194,19 +211,27 @@ router.get('/download/:filename', async(req, res) => {
         res.setHeader('Content-Disposition', `attachment; filename="${encodeURIComponent(file.originalName)}"`);
 
         const fileStream = fs.createReadStream(filePath);
+        fileStream.on('error', (error) => {
+            console.error('Stream error:', error.stack);
+            res.status(500).send({ message: `Failed to download file: ${error.message}` });
+        });
         fileStream.pipe(res);
     } catch (error) {
         console.error('Download file error:', error.stack);
-        res.status(500).send({ message: error.message });
+        res.status(500).send({ message: `Failed to download file: ${error.message}` });
     }
 });
 
 // Delete file
 router.delete('/files/:id', async(req, res) => {
     try {
-        const file = await File.findById(req.params.id);
+        const id = req.params.id;
+        if (!id) {
+            return res.status(400).send({ message: 'File ID is required' });
+        }
+        const file = await File.findById(id);
         if (!file) {
-            return res.status(404).send({ message: 'File not found.' });
+            return res.status(404).send({ message: 'File not found' });
         }
         const filePath = path.join(uploadDir, file.filename);
         if (fs.existsSync(filePath)) {
@@ -214,11 +239,11 @@ router.delete('/files/:id', async(req, res) => {
         } else {
             console.warn(`File not found on disk: ${filePath}`);
         }
-        await File.findByIdAndDelete(req.params.id);
-        res.status(200).send({ message: 'File deleted successfully.' });
+        await File.findByIdAndDelete(id);
+        res.status(200).send({ message: 'File deleted successfully' });
     } catch (error) {
         console.error('Delete error:', error.stack);
-        res.status(500).send({ message: error.message || 'Failed to delete file.' });
+        res.status(500).send({ message: `Failed to delete file: ${error.message}` });
     }
 });
 
