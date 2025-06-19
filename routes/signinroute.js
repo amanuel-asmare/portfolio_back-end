@@ -19,7 +19,7 @@ if (!fs.existsSync(uploadDir)) {
 const allowedOrigins = process.env.ALLOWED_ORIGINS ? process.env.ALLOWED_ORIGINS.split(',') : ['http://localhost:5173', 'https://portfolio-ypox.onrender.com'];
 router.use(cors({
     origin: (origin, callback) => {
-        console.log(`Route Request Origin: ${origin}`); // Log origin for debugging
+        console.log(`Route Request Origin: ${origin}`);
         if (!origin || allowedOrigins.includes(origin)) {
             callback(null, true);
         } else {
@@ -31,6 +31,37 @@ router.use(cors({
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
     preflightContinue: true,
 }));
+
+// Log and validate route registrations
+const originalPost = router.post.bind(router);
+router.post = (path, ...args) => {
+    console.log(`Registering POST route: ${path}`);
+    if (path.includes(':') && !path.match(/:[a-zA-Z0-9_]+/)) {
+        console.error(`Invalid POST route path: ${path}`);
+        throw new Error(`Invalid POST route path: ${path}`);
+    }
+    return originalPost(path, ...args);
+};
+
+const originalGet = router.get.bind(router);
+router.get = (path, ...args) => {
+    console.log(`Registering GET route: ${path}`);
+    if (path.includes(':') && !path.match(/:[a-zA-Z0-9_]+/)) {
+        console.error(`Invalid GET route path: ${path}`);
+        throw new Error(`Invalid GET route path: ${path}`);
+    }
+    return originalGet(path, ...args);
+};
+
+const originalDelete = router.delete.bind(router);
+router.delete = (path, ...args) => {
+    console.log(`Registering DELETE route: ${path}`);
+    if (path.includes(':') && !path.match(/:[a-zA-Z0-9_]+/)) {
+        console.error(`Invalid DELETE route path: ${path}`);
+        throw new Error(`Invalid DELETE route path: ${path}`);
+    }
+    return originalDelete(path, ...args);
+};
 
 // Configure Multer
 const storage = multer.diskStorage({
@@ -75,7 +106,7 @@ const handleMulterError = (err, req, res, next) => {
 };
 
 // Sign-in route
-router.post('/api/signin', async(req, res) => {
+router.post('/signin', async(req, res) => {
     try {
         const { name, email, password } = req.body;
         const hashedPassword = await bcrypt.hash(password, 10);
@@ -89,7 +120,7 @@ router.post('/api/signin', async(req, res) => {
 });
 
 // Login route
-router.post('/api/login', async(req, res) => {
+router.post('/login', async(req, res) => {
     try {
         const { name, password } = req.body;
         if (!name || !password) {
@@ -111,7 +142,7 @@ router.post('/api/login', async(req, res) => {
 });
 
 // File upload route
-router.post('/api/upload', (req, res, next) => {
+router.post('/upload', (req, res, next) => {
     upload(req, res, (err) => {
         if (err) {
             return next(err);
@@ -141,7 +172,7 @@ router.post('/api/upload', (req, res, next) => {
 });
 
 // Get all files route
-router.get('/api/files', async(req, res) => {
+router.get('/files', async(req, res) => {
     try {
         const files = await File.find().sort({ uploadDate: -1 });
         res.status(200).send(files);
@@ -152,7 +183,7 @@ router.get('/api/files', async(req, res) => {
 });
 
 // Serve uploaded files with proper headers
-router.get('/api/uploads/:filename', async(req, res) => {
+router.get('/uploads/:filename', async(req, res) => {
     try {
         const filename = req.params.filename;
         const file = await File.findOne({ filename });
@@ -177,7 +208,7 @@ router.get('/api/uploads/:filename', async(req, res) => {
 });
 
 // Download file with proper headers
-router.get('/api/download/:filename', async(req, res) => {
+router.get('/download/:filename', async(req, res) => {
     try {
         const filename = req.params.filename;
         const file = await File.findOne({ filename });
@@ -202,7 +233,7 @@ router.get('/api/download/:filename', async(req, res) => {
 });
 
 // Delete file
-router.delete('/api/files/:id', async(req, res) => {
+router.delete('/files/:id', async(req, res) => {
     try {
         const file = await File.findById(req.params.id);
         if (!file) {
