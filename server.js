@@ -16,14 +16,12 @@ app.use(cors({
     allowedHeaders: ['Content-Type', 'Authorization'],
     methods: ['GET', 'POST', 'PUT', 'DELETE'],
 }));
-
 mongoose.connect(process.env.MONGODB_URI)
     .then(() => console.log('MongoDB connected'))
     .catch((error) => {
         console.error('MongoDB connection error:', error.stack); // Improved error handling
         process.exit(1); // Exit if connection fails
     });
-
 app.use('/uploads', express.static(path.join(__dirname, 'Uploads')));
 
 app.use('/api', signinRoute);
