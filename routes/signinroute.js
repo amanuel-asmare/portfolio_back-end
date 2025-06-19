@@ -17,7 +17,7 @@ if (!fs.existsSync(uploadDir)) {
 
 // Configure CORS
 router.use(cors({
-    origin: 'http://localhost:5173',
+    origin: process.env.ALLOWED_ORIGINS ? process.env.ALLOWED_ORIGINS.split(',') : ['http://localhost:5173'], // Use environment variable for origins
     credentials: true,
     allowedHeaders: ['Content-Type', 'Authorization'],
     methods: ['GET', 'POST', 'PUT', 'DELETE'],
@@ -74,7 +74,7 @@ router.post('/api/signin', async(req, res) => {
         await user.save();
         res.status(201).send({ message: 'User created successfully', user: { name, email } });
     } catch (error) {
-        console.error('Sign-in error:', error);
+        console.error('Sign-in error:', error.stack); // Improved error logging
         res.status(400).send({ message: error.message });
     }
 });
@@ -83,6 +83,9 @@ router.post('/api/signin', async(req, res) => {
 router.post('/api/login', async(req, res) => {
     try {
         const { name, password } = req.body;
+        if (!name || !password) { // Added input validation
+            return res.status(400).send({ message: 'Name and password are required' });
+        }
         const user = await SignUser.findOne({ name });
         if (!user) {
             return res.status(400).send({ message: 'User not found' });
@@ -93,8 +96,8 @@ router.post('/api/login', async(req, res) => {
         }
         res.status(200).send({ message: 'Login successful', user: { name: user.name, email: user.email } });
     } catch (error) {
-        console.error('Login error:', error);
-        res.status(500).send({ message: 'Server error' });
+        console.error('Login error:', error.stack); // Improved error logging
+        res.status(500).send({ message: 'Server error', error: error.message });
     }
 });
 
@@ -116,14 +119,14 @@ router.post('/api/upload', (req, res, next) => {
             filename: req.file.filename,
             originalName: req.file.originalname,
             mimeType: req.file.mimetype,
-            path: req.file.filename, // Store only the filename
+            path: req.file.filename,
             size: req.file.size,
         });
         await file.save();
         console.log('File saved to MongoDB:', file);
         res.status(201).send({ message: 'File uploaded successfully', file });
     } catch (error) {
-        console.error('Upload error:', error);
+        console.error('Upload error:', error.stack); // Improved error logging
         res.status(500).send({ message: `Failed to save file: ${error.message}` });
     }
 });
@@ -134,7 +137,7 @@ router.get('/api/files', async(req, res) => {
         const files = await File.find().sort({ uploadDate: -1 });
         res.status(200).send(files);
     } catch (error) {
-        console.error('Fetch files error:', error);
+        console.error('Fetch files error:', error.stack); // Improved error logging
         res.status(500).send({ message: `Failed to fetch files: ${error.message}` });
     }
 });
@@ -143,7 +146,7 @@ router.get('/api/files', async(req, res) => {
 router.get('/api/uploads/:filename', async(req, res) => {
     try {
         const filename = req.params.filename;
-        const file = await File.findOne({ filename }); // Verify file exists in database
+        const file = await File.findOne({ filename });
         if (!file) {
             return res.status(404).send({ message: 'File not found in database' });
         }
@@ -153,16 +156,14 @@ router.get('/api/uploads/:filename', async(req, res) => {
             return res.status(404).send({ message: 'File not found on server' });
         }
 
-        // Set headers for file serving
         res.setHeader('Content-Type', file.mimeType);
         res.setHeader('Content-Disposition', `inline; filename="${encodeURIComponent(file.originalName)}"`);
 
-        // Stream the file
         const fileStream = fs.createReadStream(filePath);
         fileStream.pipe(res);
     } catch (error) {
-        console.error('Serve file error:', error);
-        res.status(500).send({ message: `Failed to serve file: ${error.message}` });
+        console.error('Serve file error:', error.stack); // Improved error logging
+        res.status(500).send({ message: error.message });
     }
 });
 
@@ -170,7 +171,7 @@ router.get('/api/uploads/:filename', async(req, res) => {
 router.get('/api/download/:filename', async(req, res) => {
     try {
         const filename = req.params.filename;
-        const file = await File.findOne({ filename }); // Verify file exists in database
+        const file = await File.findOne({ filename });
         if (!file) {
             return res.status(404).send({ message: 'File not found in database' });
         }
@@ -180,16 +181,14 @@ router.get('/api/download/:filename', async(req, res) => {
             return res.status(404).send({ message: 'File not found on server' });
         }
 
-        // Set headers for download
         res.setHeader('Content-Type', file.mimeType);
         res.setHeader('Content-Disposition', `attachment; filename="${encodeURIComponent(file.originalName)}"`);
 
-        // Stream the file
         const fileStream = fs.createReadStream(filePath);
         fileStream.pipe(res);
     } catch (error) {
-        console.error('Download file error:', error);
-        res.status(500).send({ message: `Failed to download file: ${error.message}` });
+        console.error('Download file error:', error.stack); // Improved error logging
+        res.status(500).send({ message: error.message });
     }
 });
 
@@ -202,14 +201,14 @@ router.delete('/api/files/:id', async(req, res) => {
         }
         const filePath = path.join(uploadDir, file.filename);
         if (fs.existsSync(filePath)) {
-            fs.unlinkSync(filePath); // Delete file from filesystem
+            fs.unlinkSync(filePath);
         } else {
             console.warn(`File not found on disk: ${filePath}`);
         }
-        await File.findByIdAndDelete(req.params.id); // Delete from MongoDB
+        await File.findByIdAndDelete(req.params.id);
         res.status(200).send({ message: 'File deleted successfully.' });
     } catch (error) {
-        console.error('Delete error:', error);
+        console.error('Delete error:', error.stack); // Improved error logging
         res.status(500).send({ message: error.message || 'Failed to delete file.' });
     }
 });

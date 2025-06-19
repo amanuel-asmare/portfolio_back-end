@@ -1,31 +1,34 @@
-require('dotenv').config(); // Load environment variables
+require('dotenv').config();
 const express = require('express');
 const mongoose = require('mongoose');
 const cors = require('cors');
 const path = require('path');
 const signinRoute = require('./routes/signinroute');
-const connectDB = require("./config/db");
-
 
 const app = express();
 const PORT = process.env.PORT || 5000;
-//connectDB();
+
 app.use(express.json());
 
 app.use(cors({
-    origin: 'http://localhost:5173',
+    origin: process.env.ALLOWED_ORIGINS ? process.env.ALLOWED_ORIGINS.split(',') : ['http://localhost:5173'], // Use environment variable for origins
     credentials: true,
     allowedHeaders: ['Content-Type', 'Authorization'],
     methods: ['GET', 'POST', 'PUT', 'DELETE'],
 }));
 
-mongoose.connect(process.env.MONGODB_URI)
+mongoose.connect(process.env.MONGODB_URI, {
+        useNewUrlParser: true,
+        useUnifiedTopology: true,
+    })
     .then(() => console.log('MongoDB connected'))
-    .catch((error) => console.error(`MongoDB connection error: ${error}`));
-// Serve uploaded files statically (optional, for backward compatibility)
+    .catch((error) => {
+        console.error('MongoDB connection error:', error.stack); // Improved error handling
+        process.exit(1); // Exit if connection fails
+    });
+
 app.use('/uploads', express.static(path.join(__dirname, 'Uploads')));
 
-
-app.use('/api', signinRoute); // Mount routes under /api
+app.use('/api', signinRoute);
 
 app.listen(PORT, () => console.log(`Server is running on http://localhost:${PORT}`));
